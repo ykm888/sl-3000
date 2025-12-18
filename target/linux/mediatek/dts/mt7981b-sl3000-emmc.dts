@@ -22,7 +22,7 @@
     };
 
     chosen {
-        bootargs = "root=PARTLABEL=rootfs rootwait";
+        bootargs = "console=ttyS0,115200n8 earlycon root=PARTLABEL=rootfs rootwait";
         stdout-path = "serial0:115200n8";
     };
 
@@ -153,34 +153,50 @@
     vmmc-supply = <&reg_3p3v>;
     status = "okay";
 
-    card@0 {
-        compatible = "mmc-card";
-        reg = <0>;
+    partitions {
+        compatible = "fixed-partitions";
+        #address-cells = <1>;
+        #size-cells = <1>;
 
-        block {
-            compatible = "block-device";
+        partition@0 {
+            label = "bl2";
+            reg = <0x00000000 0x00040000>;
+        };
 
-            partitions {
-                block-partition-factory {
-                    partname = "factory";
+        partition@40000 {
+            label = "fip";
+            reg = <0x00040000 0x001C0000>;
+        };
 
-                    nvmem-layout {
-                        compatible = "fixed-layout";
-                        #address-cells = <1>;
-                        #size-cells = <1>;
+        partition@200000 {
+            label = "factory";
+            reg = <0x00200000 0x00100000>;
 
-                        eeprom_factory_0: eeprom@0 {
-                            reg = <0x0 0x1000>;
-                        };
+            nvmem-layout {
+                compatible = "fixed-layout";
+                #address-cells = <1>;
+                #size-cells = <1>;
 
-                        macaddr_factory_4: macaddr@4 {
-                            compatible = "mac-base";
-                            reg = <0x4 0x6>;
-                            #nvmem-cell-cells = <1>;
-                        };
-                    };
+                eeprom_factory_0: eeprom@0 {
+                    reg = <0x0 0x1000>;
+                };
+
+                macaddr_factory_4: macaddr@4 {
+                    compatible = "mac-base";
+                    reg = <0x4 0x6>;
+                    #nvmem-cell-cells = <1>;
                 };
             };
+        };
+
+        partition@300000 {
+            label = "rootfs";
+            reg = <0x00300000 0x07000000>;
+        };
+
+        partition@7300000 {
+            label = "rootfs_data";
+            reg = <0x07300000 0x04D00000>;
         };
     };
 };
@@ -215,6 +231,6 @@
     };
 };
 
-/* USB — 你机器没有 USB，必须禁用 */
+/* USB — disabled */
 &usb_phy { status = "disabled"; };
 &xhci    { status = "disabled"; };
