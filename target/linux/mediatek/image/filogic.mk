@@ -398,14 +398,11 @@ define Device/sl3000-emmc
 
   KERNEL_IN_UBI := 1
 
-  KERNEL := kernel-bin | lzma | \
-        fit lzma $$(KDIR)/image-$$(firstword $$(DEVICE_DTS)).dtb
-
-  KERNEL_INITRAMFS := kernel-bin | lzma | \
-        fit lzma $$(KDIR)/image-$$(firstword $$(DEVICE_DTS)).dtb with-initrd | pad-to 64k
+  KERNEL := kernel-bin|lzma|fit lzma $$(KDIR)/image-$$(firstword $$(DEVICE_DTS)).dtb
+  KERNEL_INITRAMFS := kernel-bin|lzma|fit lzma $$(KDIR)/image-$$(firstword $$(DEVICE_DTS)).dtb with-initrd|pad-to 64k
 
   IMAGES := sysupgrade.bin
-  IMAGE/sysupgrade.bin := sysupgrade-tar | append-metadata
+  IMAGE/sysupgrade.bin := sysupgrade-tar|append-metadata
 
   DEVICE_PACKAGES := \
     kmod-mt7915e kmod-mt7981-firmware mt7981-wo-firmware \
