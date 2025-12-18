@@ -382,6 +382,33 @@ define Device/cudy_m3000-v1
 endef
 TARGET_DEVICES += cudy_m3000-v1
 
+define Device/sl3000-emmc
+  DEVICE_VENDOR := SL
+  DEVICE_MODEL := 3000
+  DEVICE_VARIANT := eMMC
+
+  DEVICE_DTS := mt7981b-sl3000-emmc
+  DEVICE_DTS_DIR := $(DTS_DIR)/mediatek
+
+  SUPPORTED_DEVICES := sl,3000-emmc
+
+  BLOCKSIZE := 128k
+  PAGESIZE := 2048
+  IMAGE_SIZE := 120832k
+
+  KERNEL := kernel-bin
+  KERNEL_INITRAMFS := kernel-bin
+
+  IMAGES := sysupgrade.bin
+  IMAGE/sysupgrade.bin := append-kernel | append-rootfs | pad-rootfs | append-metadata
+
+  DEVICE_PACKAGES := \
+    kmod-mt7915e kmod-mt7981-firmware \
+    kmod-leds-gpio kmod-gpio-button-hotplug \
+    block-mount e2fsprogs fdisk
+endef
+TARGET_DEVICES += sl3000-emmc
+
 define Device/cudy_re3000-v1
   DEVICE_VENDOR := Cudy
   DEVICE_MODEL := RE3000
