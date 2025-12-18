@@ -1,0 +1,144 @@
+name: Build SL3000 OpenWrt
+
+on:
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: ubuntu-22.04
+
+    env:
+      TZ: Asia/Shanghai
+      CCACHE_DIR: ${{ github.workspace }}/.ccache
+      DL_DIR: ${{ github.workspace }}/dl
+      BUILD_LOG: ${{ github.workspace }}/build.log
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Init meta
+        id: meta
+        run: |
+          echo "short_sha=$(git rev-parse --short HEAD)" >> $GITHUB_OUTPUT
+          echo "date_str=$(date +"%Y%m%d-%H%M")" >> $GITHUB_OUTPUT
+
+      # ✅ 关键：用 tmpfs 覆盖大目录（不会卡死）
+      - name: Free disk space safely
+        run: |
+          sudo swapoff -a || true
+          sudo rm -f /swapfile || true
+
+          for dir in /usr/share/dotnet /usr/local/lib/android /opt/ghc /opt/hostedtoolcache; do
+            if [ -d "$dir" ]; then
+              echo "Mounting tmpfs on $dir"
+              sudo mount -t tmpfs -o size=1M tmpfs "$dir" || true
+            fi
+          done
+
+          df -h
+
+      - name: Install dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            build-essential clang flex bison g++ gawk gettext git \
+            libncurses5-dev libssl-dev python3 rsync unzip zlib1g-dev \
+            file wget curl ccache libelf-dev qemu-utils
+
+      - name: Setup timezone
+        run: |
+          sudo ln -sf /usr/share/zoneinfo/$TZ /etc/localtime
+          sudo dpkg-reconfigure -f noninteractive tzdata
+
+      # ✅ dl 缓存
+      - name: Cache dl
+        uses: actions/cache@v4
+        with:
+          path: ${{ env.DL_DIR }}
+          key: dl-${{ runner.os }}-${{ hashFiles('feeds.conf*') }}
+          restore-keys: |
+            dl-${{ runner.os }}-
+
+      # ✅ ccache 缓存
+      - name: Cache ccache
+        uses: actions/cache@v4
+        with:
+          path: ${{ env.CCACHE_DIR }}
+          key: ccache-${{ runner.os }}-${{ hashFiles('.config') }}
+          restore-keys: |
+            ccache-${{ runner.os }}-
+
+      - name: Setup ccache
+        run: |
+          echo "export CCACHE_DIR=${CCACHE_DIR}" >> $GITHUB_ENV
+          echo "export CCACHE_COMPRESS=1" >> $GITHUB_ENV
+          echo "export CC='ccache gcc'" >> $GITHUB_ENV
+          echo "export CXX='ccache g++'" >> $GITHUB_ENV
+          ccache --max-size=1G
+
+      - name: ccache stats (before)
+        run: ccache -s || true
+
+      - name: Update & install feeds
+        run: |
+          ./scripts/feeds update -a
+          ./scripts/feeds install -a
+
+      - name: Make defconfig
+        run: make defconfig
+
+      - name: Build firmware
+        run: |
+          echo "Start build at $(date)" | tee -a "${BUILD_LOG}"
+          make -j$(nproc) V=s 2>&1 | tee -a "${BUILD_LOG}"
+          echo "Build finished at $(date)" | tee -a "${BUILD_LOG}"
+
+          echo "==== LS bin/targets AFTER BUILD ===="
+          find bin/targets -maxdepth 4 -type f -printf '%P %k KB\n' || true
+
+      - name: ccache stats (after)
+        run: ccache -s || true
+
+      # ✅ 固件收集（宽松匹配）
+      - name: Collect artifacts
+        run: |
+          mkdir -p artifacts
+
+          find bin/targets -type f \
+            \( -name '*sl3000*sysupgrade*.bin' -o -name '*.bin' -o -name '*.itb' -o -name '*.img*' \) \
+            -exec cp -v {} artifacts/ \;
+
+          cp .config artifacts/config.sl3000.config || true
+          cp "${BUILD_LOG}" artifacts/build.sl3000.log || true
+
+          BIN_COUNT=$(ls artifacts/*.bin 2>/dev/null | wc -l || echo 0)
+          if [ "$BIN_COUNT" -eq 0 ]; then
+            echo "❌ ERROR: No .bin images collected!"
+            exit 1
+          fi
+
+      - name: Upload artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: sl3000-${{ steps.meta.outputs.date_str }}-${{ steps.meta.outputs.short_sha }}
+          path: artifacts
+          retention-days: 10
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: sl3000-${{ steps.meta.outputs.date_str }}-${{ steps.meta.outputs.short_sha }}
+          name: SL3000 Build ${{ steps.meta.outputs.date_str }} (${{ steps.meta.outputs.short_sha }})
+          body: |
+            自动构建固件（SL3000 eMMC）
+
+            - 提交: ${{ steps.meta.outputs.short_sha }}
+            - 运行号: ${{ github.run_number }}
+            - 触发者: ${{ github.actor }}
+
+          files: artifacts/*
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
