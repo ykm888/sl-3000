@@ -25,7 +25,7 @@ jobs:
           echo "short_sha=$(git rev-parse --short HEAD)" >> $GITHUB_OUTPUT
           echo "date_str=$(date +"%Y%m%d-%H%M")" >> $GITHUB_OUTPUT
 
-      # ✅ 关键：用 tmpfs 覆盖大目录（不会卡死）
+      # ✅ 释放磁盘空间（安全方式）
       - name: Free disk space safely
         run: |
           sudo swapoff -a || true
@@ -67,7 +67,7 @@ jobs:
         uses: actions/cache@v4
         with:
           path: ${{ env.CCACHE_DIR }}
-          key: ccache-${{ runner.os }}-${{ hashFiles('.config') }}
+          key: ccache-${{ runner.os }}-${{ hashFiles('configs/sl3000.config') }}
           restore-keys: |
             ccache-${{ runner.os }}-
 
@@ -87,8 +87,18 @@ jobs:
           ./scripts/feeds update -a
           ./scripts/feeds install -a
 
+      # ✅ 使用你的 sl3000.config
+      - name: Use sl3000 config
+        run: |
+          cp configs/sl3000.config .config
+          echo "Using sl3000.config:"
+          grep sl3000-emmc .config || true
+
       - name: Make defconfig
-        run: make defconfig
+        run: |
+          make defconfig
+          echo "Final .config device selection:"
+          grep sl3000-emmc .config || true
 
       - name: Build firmware
         run: |
@@ -102,10 +112,16 @@ jobs:
       - name: ccache stats (after)
         run: ccache -s || true
 
-      # ✅ 固件收集（宽松匹配）
+      # ✅ 固件收集
       - name: Collect artifacts
         run: |
           mkdir -p artifacts
+
+          echo "==== CHECK sl3000-emmc in .config ===="
+          grep -n 'sl3000-emmc' .config || echo 'sl3000-emmc NOT found in .config'
+
+          echo "==== LS bin/targets BEFORE COLLECT ===="
+          find bin/targets -maxdepth 4 -type f -printf '%P %k KB\n' || true
 
           find bin/targets -type f \
             \( -name '*sl3000*sysupgrade*.bin' -o -name '*.bin' -o -name '*.itb' -o -name '*.img*' \) \
